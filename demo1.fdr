@@ -1,0 +1,55 @@
+
+
+-- types
+
+datatype  GoNoGo  =  Go | NoGo
+
+
+-- events
+
+channel  setMainFlag, getMainFlag  :  GoNoGo
+channel  setSubFlag,  getSubFlag   :  GoNoGo
+channel  skipFlag
+
+channel  accessMain, accessSub
+
+Ctrls = {|setMainFlag, getMainFlag,
+          setSubFlag, getSubFlag, skipFlag|}
+
+
+-- processes
+
+HITAC5020Spec = (accessMain -> accessSub -> SKIP) |~|
+                  (accessSub -> accessMain -> SKIP)
+
+HITAC5020Impl = (Procs [|Ctrls|] Flags) \ Ctrls
+
+Procs = (MainProc ||| SubProc); skipFlag -> SKIP
+Flags = MainFlag(NoGo) [|{|skipFlag|}|] SubFlag(NoGo)
+
+MainFlag(x) = (setMainFlag?new_x -> MainFlag(new_x)) []
+                (getMainFlag!x -> MainFlag(x)) []
+                (skipFlag -> SKIP)
+
+SubFlag(x) = (setSubFlag?new_x -> SubFlag(new_x)) []
+               (getSubFlag!x -> SubFlag(x)) []
+               (skipFlag -> SKIP)
+
+MainProc = MainProc1
+MainProc1 = getSubFlag?NoGo -> MainProc2
+MainProc2 = (getMainFlag?NoGo -> MainProc3) [] (getMainFlag?Go -> MainProc4)
+MainProc3 = setMainFlag!Go -> MainProc1
+MainProc4 = accessMain -> setMainFlag!NoGo -> SKIP
+
+SubProc = SubProc1
+SubProc1 = (getMainFlag?Go -> setSubFlag!NoGo -> SubProc1x) [] SubProc1x
+SubProc1x = (getMainFlag?NoGo -> SubProc2)
+SubProc2 = (getSubFlag?NoGo -> SubProc3) [] (getSubFlag?Go -> SubProc4)
+SubProc3 = setSubFlag!Go -> SubProc1
+SubProc4 = accessSub -> setSubFlag!NoGo -> SKIP
+
+
+-- verifications
+
+assert   HITAC5020Spec  [F=   HITAC5020Impl
+assert   HITAC5020Spec  [FD=  HITAC5020Impl
